@@ -1,0 +1,87 @@
+{namespace todo.servtmpl}
+
+// Server-side-only templates
+
+/**
+ * @param numTodos
+ * @param todos
+ */
+{template .home}
+{call .htmlHeader /}
+  <body>
+    <div id="todo-home">
+      {call .createForm /}
+      <hr />
+      {call .todoList data="all"/}
+    </div>
+
+    <script src="/assets/todo.js"></script>
+    <script>
+      todo.entry.main();
+    </script>
+  </body>
+{call .htmlFooter /}
+{/template}
+
+/**
+ * @param todo
+ */
+{template .update}
+{call .htmlHeader /}
+  <body>
+    <div id="update-todo">
+      <form action="/update/{$todo._id}" method="post">
+        <textarea class="todo-content" name="content">
+          {$todo.content}
+        </textarea>
+        <input class="submit-btn" type="submit" value="submit">
+      </form>
+    </div>
+  </body>
+{call .htmlFooter /}
+{/template}
+
+/**
+ * Nothing much
+ */
+{template .htmlHeader}
+<!doctype>
+<html>
+  <head>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <title>Show all todos</title>
+    <link rel="stylesheet" type="text/css" href="/assets/todo.css" />
+  </head>
+{/template}
+
+/**
+ * Nothing much
+ */
+{template .htmlFooter}
+</html>
+{/template}
+
+/**
+ * @param numTodos
+ * @param todos
+ */
+{template .todoList}
+  <div class="todo-list">
+    {foreach $todo in $todos}
+      <div class="todo">{call todo.templates.showOne data="$todo" /}</div>
+    {/foreach}
+  </div>
+{/template}
+
+/**
+ * Just a static template
+ */
+{template .createForm}
+<div class="create-todo">
+  <form class="submit-form" action="/create" method="post">
+    <textarea class="todo-content" name="content"></textarea>
+    <input class="submit-btn" type="submit" value="submit">
+  </form>
+</div>
+{/template}
+

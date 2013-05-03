@@ -1,0 +1,16 @@
+
+.todo .edit {
+    background-color: #eee;
+    padding: 2px;
+    text-decoration: none;
+}
+
+.todo .edit.goog-control-hover {
+    background-color: #ccc;
+}
+
+.todo .edit.goog-control-disabled {
+    color: grey;
+    cursor: default;
+}
+

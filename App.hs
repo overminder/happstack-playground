@@ -12,6 +12,7 @@ import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.List as List
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Text as T
@@ -143,7 +144,6 @@ createTodo todo = do
     J.Object todoJSON = J.toJSON todo
     todoJSON' = removeIdField todoJSON
     todoDoc = J.toBson todoJSON'
-    removeIdField = HM.delete "_id"
 
 fetchSomeTodos :: Int -> AppM [Todo]
 fetchSomeTodos count = do
@@ -153,13 +153,30 @@ fetchSomeTodos count = do
       Mongo.limit = fromIntegral count
     }
     todoDocs <- Mongo.rest todoDocCursor
-    return $ map (justSucc . J.fromJSON . J.Object . J.toAeson) todoDocs
+    return $ map docToHsVal todoDocs
   --liftIO $ print eiResult
   case eiResult of
     Left e -> error (show e) -- ?
     Right xs -> return xs
 
+-- Some helper functions for mongo/aeson
 justSucc (J.Success x) = x
+removeIdField = HM.delete "_id"
+docToHsVal = justSucc . J.fromJSON . J.Object . J.toAeson
+
+mkObjId :: String -> Mongo.Value
+mkObjId xs = let (w32, _):_ = readHex (take 8 xs)
+                 (w64, _):_ = readHex (drop 8 xs)
+              in Mongo.ObjId (Mongo.Oid w32 w64)
+
+fetchTodo :: String -> AppM (Maybe Todo)
+fetchTodo _id = do
+  pipe <- asks sc_mongoPipe
+  eiResult <- Mongo.access pipe Mongo.master "NOL" $ do
+    Mongo.findOne $ (Mongo.select ["_id" := mkObjId _id] "todos")
+  case eiResult of
+    Left e -> error (show e)
+    Right mbTodo -> return $ fmap docToHsVal mbTodo
 
 fetchTodoCount :: AppM Int
 fetchTodoCount = do
@@ -170,6 +187,18 @@ fetchTodoCount = do
     Left e -> error (show e)
     Right v -> return v
 
+updateTodo :: Todo -> AppM ()
+updateTodo todo = do
+  pipe <- asks sc_mongoPipe
+  _ <- Mongo.access pipe Mongo.master "NOL" $ do
+    Mongo.replace (Mongo.select ["_id" := mkObjId idField] "todos")
+                  (J.toBson json')
+  return ()
+  where
+    J.Object json = J.toJSON $ todo
+    json' = removeIdField json
+    idField = fromJust $ todo_id todo
+
 deleteTodo :: String -> AppM ()
 deleteTodo _id = do
   pipe <- asks sc_mongoPipe
@@ -179,18 +208,15 @@ deleteTodo _id = do
   case eiResult of
     Left e -> error (show e) -- ?
     Right _ -> return ()
-  where
-    mkObjId xs = let (w32, _):_ = readHex (take 8 xs)
-                     (w64, _):_ = readHex (drop 8 xs)
-                  in Mongo.ObjId (Mongo.Oid w32 w64)
 
 appShowAllTodos :: AppRouteM Response
 appShowAllTodos = do
   todos <- lift $ fetchSomeTodos 5
   numTodos <- lift $ fetchTodoCount
-  renderSoy ["todo", "home"] [ ("todos", J.toJSON todos)
-                             , ("numTodos", J.toJSON numTodos)
-                             ]
+  renderSoy ["todo", "servtmpl", "home"]
+            [ ("todos", J.toJSON todos)
+            , ("numTodos", J.toJSON numTodos)
+            ]
 
 appCreateTodo :: AppRouteM Response
 appCreateTodo = do
@@ -202,6 +228,28 @@ appCreateTodo = do
       --liftIO $ putStrLn content
       lift $ createTodo (Todo Nothing content)
       redirectUrl Home
+
+appUpdateTodo :: String -> AppRouteM Response
+appUpdateTodo _id = msum [doUpdate, getUpdateForm]
+  where
+    getUpdateForm = do
+      mbTodo <- lift $ fetchTodo _id
+      case mbTodo of
+        Nothing -> do
+          -- XXX: This could acutally happen
+          -- So it would be better to return a more helpful message
+          notFound (toResponse ())
+        Just todo -> do
+          renderSoy ["todo", "servtmpl", "update"]
+                    [("todo", J.toJSON todo)]
+    doUpdate = do
+      methodM POST
+      eiContent <- getDataFn $ body $ look "content"
+      case eiContent of
+        Left e -> badRequest $ toResponse (unlines e)
+        Right content -> do
+          lift $ updateTodo (Todo (Just _id) content)
+          redirectUrl Home
 
 appDeleteTodo :: String -> AppRouteM Response
 appDeleteTodo _id = do
@@ -238,6 +286,7 @@ appRoute :: Url -> AppRouteM Response
 appRoute url = case url of
   Home -> appShowAllTodos
   Create -> appCreateTodo
+  Update _id -> appUpdateTodo _id
   Delete _id -> appDeleteTodo _id
 
 ajaxSite = mkSitePI (runRouteT ajaxRoute)
@@ -245,11 +294,14 @@ ajaxSite = mkSitePI (runRouteT ajaxRoute)
 ajaxRoute url = case url of
   AjaxTodo mbId -> case mbId of
     Nothing -> msum [ajaxCreateTodo]
-    Just _id -> msum [ajaxDeleteTodo _id]
+    Just _id -> msum [ ajaxUpdateTodo _id
+                     , ajaxDeleteTodo _id
+                     ]
 
 data Url
   = Home
   | Create
+  | Update String
   | Delete String
   deriving (Generic, Show)
 
@@ -275,7 +327,17 @@ ajaxCreateTodo = do
   methodM POST
   Just todo <- getJsonReq
   todo' <- lift $ createTodo todo
-  createdJSON $ J.toJSON todo'
+  createdJSON todo'
+
+-- Returning the updated todo. Although currently it's also trivial
+-- to reuse the todo in the client side, in the future some complex fields
+-- may require resending the model anyways.
+ajaxUpdateTodo :: String -> AjaxRouteM Response
+ajaxUpdateTodo _id = do
+  methodM PUT
+  Just todo <- getJsonReqWithId _id
+  lift $ updateTodo todo
+  ok $ jsonResponse todo
 
 ajaxDeleteTodo :: String -> AjaxRouteM Response
 ajaxDeleteTodo _id = do
@@ -287,6 +349,18 @@ getJsonReq :: (J.FromJSON a, MonadIO m, ServerMonad m) => m (Maybe a)
 getJsonReq = do
   rawBody <- getBody
   return (J.decode rawBody)
+
+-- Some RESTful request don't provide a _id field (E.g. PUT).
+-- Therefore we need to add it manually.
+getJsonReqWithId :: (J.FromJSON a, MonadIO m, ServerMonad m) =>
+                    String -> m (Maybe a)
+getJsonReqWithId _id = do
+  rawBody <- getBody
+  let mbVal = J.decode rawBody
+      addId (J.Object v) = J.Object (HM.insert "_id" (J.toJSON _id) v)
+  case fmap (J.fromJSON . addId) mbVal of
+    Just (J.Success x) -> return (Just x)
+    _ -> return Nothing
 
 getBody :: (MonadIO m, ServerMonad m) => m BL.ByteString
 getBody = do
@@ -316,5 +390,6 @@ instance ToMessage JSONResponse where
 -- To be kept in sync with frontend js code :P
 jSONXssPrefix = "for(;;){}"
 
-createdJSON json = created $ toResponse (JSONResponse json jSONXssPrefix)
+jsonResponse v = toResponse (JSONResponse (J.toJSON v) jSONXssPrefix)
+createdJSON = created . jsonResponse
 

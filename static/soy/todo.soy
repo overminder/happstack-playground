@@ -1,77 +1,23 @@
-{namespace todo}
+{namespace todo.templates}
 
 /**
- * @param numTodos
- * @param todos
- */
-{template .home}
-<!doctype>
-<html>
-  <head>
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <title>Show all todos</title>
-  </head>
-
-  <body>
-    <div id="todo-home">
-      {call .todoHeader data="all"/}
-      <hr />
-      {call .createForm /}
-      {call .todoList data="all"/}
-    </div>
-
-    <script src="/assets/todo.js"></script>
-    <script>
-      todo.entry.main();
-    </script>
-  </body>
-</html>
-{/template}
-
-/**
- * @param numTodos
- */
-{template .todoHeader}
-  <div class="greet">
-    {$numTodos} Todo(s)
-  </div>
-{/template}
-
-/**
- * @param todos
- */
-{template .todoList}
-  <div class="todo-list">
-    {foreach $todo in $todos}
-      {call .showOne data="$todo" /}
-    {/foreach}
-  </div>
-{/template}
-
-/**
- * @param id
+ * @param _id
  * @param content
  */
 {template .showOne}
-<div class="todo">
   <div class="title">Todo</div>
-  <div class="content">Content: {$content}</div>
+  <a class="edit" href="/update/{$_id}">edit</a>
+  <div class="content">{call .showContent data="all"/}</div>
   <form class="submit-form" action="/delete/{$_id}" method="post">
     <input class="todo-id" type="hidden" value="{$_id}">
     <input class="submit-btn" type="submit" value="delete">
   </form>
-</div>
 {/template}
 
 /**
- * Just a static template
+ * @param content
  */
-{template .createForm}
-<div class="create-todo">
-  <form action="/create" method="post">
-    <input class="todo-content" type="text" name="content">
-    <input class="submit-btn" type="submit" value="submit">
-  </form>
-</div>
+{template .showContent}
+  {$content}
 {/template}
 
