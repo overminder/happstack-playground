@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings, DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, FlexibleContexts,
+    FlexibleInstances #-}
 
 module App (
   parseStartupOption,
@@ -10,12 +11,14 @@ module App (
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Reader
+import Control.Monad.Trans.Maybe
 import qualified Data.List as List
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.Encoding as T
 import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString.Lazy as BL
 import Control.Applicative
 import System.Environment
 import System.Console.GetOpt
@@ -109,9 +112,11 @@ instance J.FromJSON Todo where
   parseJSON _ = mzero
 
 type AppRouteM a = RouteT Url (ReaderT SiteConf (ServerPartT IO)) a
+type AjaxRouteM a = RouteT AjaxUrl (ReaderT SiteConf (ServerPartT IO)) a
 type AppM a = ReaderT SiteConf (ServerPartT IO) a
 
-renderSoy :: [Soy.Identifier] -> [(Soy.Identifier, J.Value)] -> AppRouteM Response
+renderSoy :: [Soy.Identifier] -> [(Soy.Identifier, J.Value)] ->
+             AppRouteM Response
 renderSoy templateName json = do
   --liftIO $ print json
   soyConf <- asks sc_soyConf
@@ -124,13 +129,16 @@ renderSoy templateName json = do
                     ok $ toResponseBS (C.pack "text/html")
                                       (T.encodeUtf8 (L.fromStrict out))
 
-createTodo :: Todo -> AppM ()
+createTodo :: Todo -> AppM Todo
 createTodo todo = do
   pipe <- asks sc_mongoPipe
-  Mongo.access pipe Mongo.master "NOL" $ do
+  eiResult <- Mongo.access pipe Mongo.master "NOL" $ do
     Mongo.insert "todos" todoDoc
   -- XXX: handle mongo failure here
-  return ()
+  case eiResult of
+    Left e -> error (show e) -- ?
+    Right oid -> let J.String oidT = J.aesonifyValue oid
+                  in return $ todo { todo_id = Just (T.unpack oidT) }
   where
     J.Object todoJSON = J.toJSON todo
     todoJSON' = removeIdField todoJSON
@@ -176,16 +184,16 @@ deleteTodo _id = do
                      (w64, _):_ = readHex (drop 8 xs)
                   in Mongo.ObjId (Mongo.Oid w32 w64)
 
-routeShowAllTodos :: AppRouteM Response
-routeShowAllTodos = do
+appShowAllTodos :: AppRouteM Response
+appShowAllTodos = do
   todos <- lift $ fetchSomeTodos 5
   numTodos <- lift $ fetchTodoCount
   renderSoy ["todo", "home"] [ ("todos", J.toJSON todos)
                              , ("numTodos", J.toJSON numTodos)
                              ]
 
-routeCreateTodo :: AppRouteM Response
-routeCreateTodo = do
+appCreateTodo :: AppRouteM Response
+appCreateTodo = do
   methodM POST
   eiContent <- getDataFn $ body $ look "content"
   case eiContent of
@@ -195,12 +203,12 @@ routeCreateTodo = do
       lift $ createTodo (Todo Nothing content)
       redirectUrl Home
 
-routeDeleteTodo :: String -> AppRouteM Response
-routeDeleteTodo _id = do
+appDeleteTodo :: String -> AppRouteM Response
+appDeleteTodo _id = do
   lift $ deleteTodo _id
   redirectUrl Home
 
-noImpl :: String -> ServerPartT IO Response
+noImpl :: FilterMonad Response m => String -> m Response
 noImpl wat = notFound $ toResponse $ "Not Found: " ++ wat
 
 routes = do
@@ -208,7 +216,11 @@ routes = do
       assetsRoot = "./assets"
   decodeBody myPolicy
   msum [ dir "favicon.ico" $ notFound (toResponse ())
-       , do eiRoute <- implSite_ thisDomain "" site
+       , dir "a" $ do eiRoute <- implSite_ thisDomain "" ajaxSite
+                      case eiRoute of
+                        Left _ -> mzero
+                        Right m -> return m
+       , do eiRoute <- implSite_ thisDomain "" appSite
             case eiRoute of
               Left _ -> mzero
               Right m -> return m
@@ -219,14 +231,21 @@ routes = do
   where
     myPolicy = defaultBodyPolicy "/tmp/" 0 1000 1000
 
-site :: Site Url (ReaderT SiteConf (ServerPartT IO) Response)
-site = setDefault Home $ mkSitePI (runRouteT todoRoute)
+appSite :: Site Url (ReaderT SiteConf (ServerPartT IO) Response)
+appSite = setDefault Home $ mkSitePI (runRouteT appRoute)
 
-todoRoute :: Url -> AppRouteM Response
-todoRoute url = case url of
-  Home -> routeShowAllTodos
-  Create -> routeCreateTodo
-  Delete _id -> routeDeleteTodo _id
+appRoute :: Url -> AppRouteM Response
+appRoute url = case url of
+  Home -> appShowAllTodos
+  Create -> appCreateTodo
+  Delete _id -> appDeleteTodo _id
+
+ajaxSite = mkSitePI (runRouteT ajaxRoute)
+
+ajaxRoute url = case url of
+  AjaxTodo mbId -> case mbId of
+    Nothing -> msum [ajaxCreateTodo]
+    Just _id -> msum [ajaxDeleteTodo _id]
 
 data Url
   = Home
@@ -236,8 +255,66 @@ data Url
 
 instance PathInfo Url
 
+data AjaxUrl
+  = AjaxTodo (Maybe String)
+  deriving (Show)
+
+-- Custom instance here
+instance PathInfo AjaxUrl where
+  toPathSegments (AjaxTodo (Just s)) = "todo" : toPathSegments s
+  toPathSegments (AjaxTodo Nothing) = ["todo"]
+  fromPathSegments = AjaxTodo <$ segment "todo" <*> (parseJust <|> parseNothing)
+    where
+      parseJust = do
+        xs <- fromPathSegments
+        return $ Just xs
+      parseNothing = return Nothing
+
+ajaxCreateTodo :: AjaxRouteM Response
+ajaxCreateTodo = do
+  methodM POST
+  Just todo <- getJsonReq
+  todo' <- lift $ createTodo todo
+  createdJSON $ J.toJSON todo'
+
+ajaxDeleteTodo :: String -> AjaxRouteM Response
+ajaxDeleteTodo _id = do
+  methodM DELETE
+  lift $ deleteTodo _id
+  ok $ toResponse ()
+
+getJsonReq :: (J.FromJSON a, MonadIO m, ServerMonad m) => m (Maybe a)
+getJsonReq = do
+  rawBody <- getBody
+  return (J.decode rawBody)
+
+getBody :: (MonadIO m, ServerMonad m) => m BL.ByteString
+getBody = do
+    req  <- askRq 
+    mbBody <- liftIO $ takeRequestBody req 
+    case mbBody of 
+        Just body -> return . unBody $ body
+        Nothing   -> return "" 
+
 redirectUrl :: Url -> AppRouteM Response
 redirectUrl url = do
   actualUrl <- showURL url
   seeOther actualUrl (toResponse ())
+
+created = resp 201
+
+data JSONResponse = 
+  JSONResponse {
+    jr_content :: J.Value,
+    jr_xssPrefix :: BL.ByteString
+  }
+
+instance ToMessage JSONResponse where
+  toContentType = const (C.pack "application/json; charset=UTF-8")
+  toMessage a = jr_xssPrefix a `BL.append` J.encode (jr_content a)
+
+-- To be kept in sync with frontend js code :P
+jSONXssPrefix = "for(;;){}"
+
+createdJSON json = created $ toResponse (JSONResponse json jSONXssPrefix)
 

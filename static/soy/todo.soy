@@ -13,10 +13,17 @@
   </head>
 
   <body>
-    {call .todoHeader data="all"/}
-    <hr />
-    {call .createForm /}
-    {call .todoList data="all"/}
+    <div id="todo-home">
+      {call .todoHeader data="all"/}
+      <hr />
+      {call .createForm /}
+      {call .todoList data="all"/}
+    </div>
+
+    <script src="/assets/todo.js"></script>
+    <script>
+      todo.entry.main();
+    </script>
   </body>
 </html>
 {/template}
@@ -25,7 +32,7 @@
  * @param numTodos
  */
 {template .todoHeader}
-  <div id="greet">
+  <div class="greet">
     {$numTodos} Todo(s)
   </div>
 {/template}
@@ -34,7 +41,7 @@
  * @param todos
  */
 {template .todoList}
-  <div id="todolist">
+  <div class="todo-list">
     {foreach $todo in $todos}
       {call .showOne data="$todo" /}
     {/foreach}
@@ -47,10 +54,11 @@
  */
 {template .showOne}
 <div class="todo">
-  <div class="id">Todo</div>
+  <div class="title">Todo</div>
   <div class="content">Content: {$content}</div>
-  <form action="/delete/{$_id}" method="post">
-    <input type="submit" value="delete">
+  <form class="submit-form" action="/delete/{$_id}" method="post">
+    <input class="todo-id" type="hidden" value="{$_id}">
+    <input class="submit-btn" type="submit" value="delete">
   </form>
 </div>
 {/template}
@@ -59,9 +67,11 @@
  * Just a static template
  */
 {template .createForm}
-<form id="create-todo" action="/create" method="post">
-  <input type="text" name="content">
-  <input type="submit" value="submit">
-</form>
+<div class="create-todo">
+  <form action="/create" method="post">
+    <input class="todo-content" type="text" name="content">
+    <input class="submit-btn" type="submit" value="submit">
+  </form>
+</div>
 {/template}
 

@@ -1,2 +1,0 @@
-#!/bin/bash
-./Main --template-files=todo.soy
