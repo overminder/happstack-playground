@@ -15,6 +15,7 @@ goog.require('goog.net.XhrIo');
 
 goog.require('todo.templates');
 goog.require('todo.url');
+goog.require('todo.model');
 
 goog.scope(function() {
 
@@ -28,6 +29,7 @@ var ContainerRenderer = goog.ui.ContainerRenderer;
 
 /**
  * @constructor
+ * @extends {Component}
  */
 todo.ui.Home = function() {
   goog.base(this);
@@ -52,6 +54,7 @@ todo.ui.Home.prototype.decorateInternal = function(el) {
 
 /**
  * @constructor
+ * @extends {Component}
  */
 todo.ui.List = function() {
   goog.base(this);
@@ -98,18 +101,19 @@ todo.ui.Home.EventType = {
 
 /**
  * @constructor
+ * @extends {Container}
  */
 todo.ui.Todo = function() {
   goog.base(this, undefined, todo.ui.Todo.Renderer);
 
-  this.edit_ = new Control();
+  this.edit_ = new Control(null);
   this.addChild(this.edit_);
-  this.delete_ = new Control();
+  this.delete_ = new Control(null);
   this.addChild(this.delete_);
-  this.content_ = new Control();
+  this.content_ = new Control(null);
   this.addChild(this.content_);
 
-  this.editField_ = new Textarea();
+  this.editField_ = new Textarea('');
   this.addChild(this.editField_);
   this.submitEdit_ = new Button('Submit');
   this.addChild(this.submitEdit_);
@@ -126,7 +130,7 @@ todo.ui.Todo.Renderer = ContainerRenderer.getCustomRenderer(
 todo.ui.Todo.prototype.createDom = function() {
   goog.base(this, 'createDom');
 
-  var el = this.getElement();
+  var el = /** @type {Element!} */ (this.getElement());
   var model = this.getModel();
   // XXX: consider use goog closure compiler's rename map instead?
   var rekeyedModel = {
@@ -269,11 +273,12 @@ todo.ui.Todo.prototype.setIsEditing = function(editing) {
 
 /**
  * @constructor
+ * @extends {Container}
  */
 todo.ui.CreateForm = function() {
   goog.base(this);
 
-  this.contentInput_ = new Textarea();
+  this.contentInput_ = new Textarea('');
   this.addChild(this.contentInput_);
 };
 goog.inherits(todo.ui.CreateForm, Container);

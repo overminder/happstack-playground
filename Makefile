@@ -11,7 +11,9 @@ assets/todo.js : $(shell find static/js/ -name "*.js") static/soy/todo.soy.js
 		--root=static/js/ \
 		--root=static/soy/ \
 		--output_file=$@ \
-		--namespace=todo.entry
+		--namespace=todo.entry \
+		--compiler_flags="--use_types_for_optimization" \
+		--compiler_flags="--warning_level=VERBOSE"
 		#--compiler_flags="--define=todo.conf.DOMAIN_NAME='//nol-m9.rhcloud.com'"
 		#--compiler_flags="--compilation_level=SIMPLE_OPTIMIZATIONS"
 
