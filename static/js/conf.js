@@ -2,12 +2,12 @@ goog.provide('todo');
 goog.provide('todo.conf');
 
 /**
- * @const {string}
+ * @define {string}
  */
 todo.conf.DOMAIN_NAME = '//localhost:9000';
 
 /**
- * @const {string}
+ * @define {string}
  */
 todo.conf.JSON_XSS_PREFIX = 'for(;;){}';
 

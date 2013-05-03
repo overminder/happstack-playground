@@ -1,8 +1,10 @@
+@def GLORIOUS_BLUE #024d61;
 
 .todo .edit {
     background-color: #eee;
     padding: 2px;
     text-decoration: none;
+    color: GLORIOUS_BLUE;
 }
 
 .todo .edit.goog-control-hover {

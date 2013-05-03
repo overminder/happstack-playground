@@ -1,4 +1,5 @@
 #!/bin/bash
 ./Main \
-	--template-files=static/soy/todo.soy \
-	--template-files=static/soy/server.soy
+	--template-files=./static/soy/todo.soy \
+	--template-files=./static/soy/server.soy \
+	--assets-root=./assets

@@ -41,13 +41,15 @@ data StartupOption
     opt_port :: Int,
     opt_soys :: [String],
     opt_mongoHost :: String,
-    opt_mongoNeedAuth :: Bool
+    opt_mongoNeedAuth :: Bool,
+    opt_assetsRoot :: String
   }
 
 data SiteConf
   = SiteConf {
     sc_soyConf :: Soy.RenderConfig,
-    sc_mongoPipe :: Mongo.Pipe
+    sc_mongoPipe :: Mongo.Pipe,
+    sc_opt :: StartupOption
   }
 
 parseStartupOption = do
@@ -65,18 +67,22 @@ parseStartupOption = do
                   "set mongoDB need auth"
               , Option [] ["template-files"] (ReqArg addTemplateFiles "PATHS")
                   "add soy template file from PATHS"
+              , Option [] ["assets-root"] (ReqArg setAssetsRoot "PATH")
+                  "serve asset files in PATH"
               ]
     setPort = \ p opts -> opts { opt_port = read p }
     setHost = \ h opts -> opts { opt_host = h }
     addTemplateFiles = \ f opts -> opts { opt_soys = f : opt_soys opts }
     setMongoHost = \ h opts -> opts { opt_mongoHost = h }
     setMongoNeedAuth = \ opts -> opts { opt_mongoNeedAuth = True }
+    setAssetsRoot = \ r opts -> opts { opt_assetsRoot = r }
     defaultOption = StartupOption {
       opt_host = "127.0.0.1",
       opt_port = 9000,
       opt_soys = [],
       opt_mongoHost = "127.0.0.1",
-      opt_mongoNeedAuth = False
+      opt_mongoNeedAuth = False,
+      opt_assetsRoot = "./assets"
     }
     usageHeader = "Usage: Main [OPTIONS...]"
 
@@ -93,7 +99,7 @@ makeSiteConf option = do
         Right True -> return ()
         _ -> error (show eiResult)
     else return ()
-  return $ SiteConf soyConf mongoPipe
+  return $ SiteConf soyConf mongoPipe option
 
 data Todo
   = Todo {
@@ -261,7 +267,7 @@ noImpl wat = notFound $ toResponse $ "Not Found: " ++ wat
 
 routes = do
   let thisDomain = ""
-      assetsRoot = "./assets"
+  assetsRoot <- asks (opt_assetsRoot . sc_opt)
   decodeBody myPolicy
   msum [ dir "favicon.ico" $ notFound (toResponse ())
        , dir "a" $ do eiRoute <- implSite_ thisDomain "" ajaxSite

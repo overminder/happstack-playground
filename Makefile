@@ -1,7 +1,9 @@
+
 all : assets/todo.js assets/todo.css Main
 
 Main : Main.hs App.hs
 	ghc Main -static -optl-static -optl-pthread -O
+	strip Main
 
 
 assets/todo.js : $(shell find static/js/ -name "*.js") static/soy/todo.soy.js
@@ -9,8 +11,9 @@ assets/todo.js : $(shell find static/js/ -name "*.js") static/soy/todo.soy.js
 		--root=static/js/ \
 		--root=static/soy/ \
 		--output_file=$@ \
-		--namespace=todo.entry \
-		--compiler_flags="--compilation_level=SIMPLE_OPTIMIZATIONS"
+		--namespace=todo.entry
+		#--compiler_flags="--define=todo.conf.DOMAIN_NAME='//nol-m9.rhcloud.com'"
+		#--compiler_flags="--compilation_level=SIMPLE_OPTIMIZATIONS"
 
 assets/todo.css : $(shell find static/css/ -name "*.gss")
 	java -jar ~/ref/js/closure-tools/closure-stylesheets.jar \
@@ -24,4 +27,4 @@ static/soy/%.soy.js : static/soy/%.soy
 		--srcs $<
 
 clean :
-	rm *.o Main assets/todo.js
+	rm *.o Main assets/todo.js static/soy/*.soy.js
