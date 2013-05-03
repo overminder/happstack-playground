@@ -1,0 +1,3 @@
+assets/: compiled static assets
+static/: static files (css/js/soy)
+start: start development server

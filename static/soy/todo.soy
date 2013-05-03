@@ -1,0 +1,67 @@
+{namespace todo}
+
+/**
+ * @param numTodos
+ * @param todos
+ */
+{template .home}
+<!doctype>
+<html>
+  <head>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <title>Show all todos</title>
+  </head>
+
+  <body>
+    {call .todoHeader data="all"/}
+    <hr />
+    {call .createForm /}
+    {call .todoList data="all"/}
+  </body>
+</html>
+{/template}
+
+/**
+ * @param numTodos
+ */
+{template .todoHeader}
+  <div id="greet">
+    {$numTodos} Todo(s)
+  </div>
+{/template}
+
+/**
+ * @param todos
+ */
+{template .todoList}
+  <div id="todolist">
+    {foreach $todo in $todos}
+      {call .showOne data="$todo" /}
+    {/foreach}
+  </div>
+{/template}
+
+/**
+ * @param id
+ * @param content
+ */
+{template .showOne}
+<div class="todo">
+  <div class="id">Todo</div>
+  <div class="content">Content: {$content}</div>
+  <form action="/delete/{$_id}" method="post">
+    <input type="submit" value="delete">
+  </form>
+</div>
+{/template}
+
+/**
+ * Just a static template
+ */
+{template .createForm}
+<form id="create-todo" action="/create" method="post">
+  <input type="text" name="content">
+  <input type="submit" value="submit">
+</form>
+{/template}
+
