@@ -1,5 +1,12 @@
 #!/bin/bash
-./Main \
+
+if [ "$1" = '--interp' ]; then
+	runner="runhaskell Main.hs"
+else
+	runner="./Main"
+fi
+
+$runner \
 	--template-files=./static/soy/todo.soy \
 	--template-files=./static/soy/server.soy \
 	--assets-root=./assets

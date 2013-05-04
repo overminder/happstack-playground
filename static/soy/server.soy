@@ -14,11 +14,6 @@
       <hr />
       {call .todoList data="all"/}
     </div>
-
-    <script src="/assets/todo.js?201305041247"></script>
-    <script>
-      todo.entry.main();
-    </script>
   </body>
 {call .htmlFooter /}
 {/template}
@@ -50,7 +45,10 @@
   <head>
     <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
     <title>Show all todos</title>
-    <link rel="stylesheet" type="text/css" href="/assets/todo.css?201305041247" />
+    <link rel="stylesheet" type="text/css"
+     href="/assets/todo.css?201305041247" />
+    <script src="/assets/todo.js?201305041247" async
+     onload="todo.entry.main()"></script>
   </head>
 {/template}
 

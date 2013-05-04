@@ -2,7 +2,7 @@
 all : assets/todo.js assets/todo.css Main
 
 Main : Main.hs App.hs
-	ghc Main -static -optl-static -optl-pthread -O
+	ghc Main --make -static -optl-static -optl-pthread -O
 	strip Main
 
 
