@@ -4,7 +4,7 @@ projRoot=$(pwd)
 
 if [ "$1" = '--interp' ]; then
 	cd app
-	runner="runhaskell Main.hs"
+	runner="runhaskell -DASSETS_DIR=$projRoot/assets Main.hs"
 else
 	runner="./Main"
 fi

@@ -2,27 +2,36 @@
              OverloadedStrings #-}
 {-# OPTIONS -pgmP cpp #-}
 
-import System.IO
 import Control.Monad.Reader
+import Control.Concurrent
+import qualified Data.Text as T
+import System.IO
 
 import qualified Happstack.Server as H
 import qualified Happstack.Server.SimpleHTTP as H
 import qualified Happstack.Server.Internal.Monads as H
 import qualified Happstack.Server.Wai as HW
+import qualified Network.WebSockets as WS
 import qualified Network.Wai.Handler.Warp as W
+import qualified Network.Wai.Handler.WebSockets as Wws
 import qualified Network.Wai.Application.Static as S
 import qualified WaiAppStatic.Types as S
 import Data.FileEmbed (embedDir)
 
 import App
+import Conf
+import qualified Push as P
+import qualified Model as M
 
 main = do
   option <- parseStartupOption
   siteConf <- makeSiteConf option
   let warpSetting = W.defaultSettings {
         W.settingsPort = portNum,
-        W.settingsHost = W.Host hostIp
+        W.settingsHost = W.Host hostIp,
+        W.settingsIntercept = Wws.intercept $ wsApp pushChan
       }
+      pushChan = M.db_pushChan . sc_dbInfo $ siteConf
       hostIp = opt_host option
       portNum = opt_port option
 
@@ -49,15 +58,15 @@ runHapp sp req = runWebT $ H.runServerPartT sp req
 #define TO_S_(x) #x
 
 -- Serves static files by compiling them into the binary :P
-staticApp = S.staticApp setting'
+staticApp = S.staticApp setting
   where
-    setting = S.embeddedSettings $(embedDir TO_S(ASSETS_DIR))
-    lookup = S.ssLookupFile setting
-    lookup' pieces = case pieces of
-      x:xs | "assets" == S.fromPiece x -> lookup xs
+    settingOrig = S.embeddedSettings $(embedDir TO_S(ASSETS_DIR))
+    lookupOrig = S.ssLookupFile settingOrig
+    lookup pieces = case pieces of
+      x:xs | "assets" == S.fromPiece x -> lookupOrig xs
       _ -> return S.LRNotFound
-    setting' = setting {
-      S.ssLookupFile = lookup',
+    setting = settingOrig {
+      S.ssLookupFile = lookup,
       S.ssUseHash = True,
       S.ssListing = Nothing
     }
@@ -70,4 +79,15 @@ runWebT = (fmap . fmap) appFilterToResp . H.ununWebT
     appFilterToResp :: (Either H.Response b, H.FilterFun H.Response) ->
                        H.Response
     appFilterToResp (e, ff) = H.unFilterFun ff $ either id H.toResponse e
+
+-- WebSockets
+wsApp :: P.MessageChan -> WS.Request -> WS.WebSockets WS.Hybi10 ()
+wsApp chan request = case WS.requestPath request of
+  "/" -> do
+    WS.acceptRequest request
+    WS.getVersion >>= liftIO . putStrLn . ("client version: " ++)
+    sink <- WS.getSink
+    P.subscribe chan
+  _ -> do
+    WS.rejectRequest request ""
 

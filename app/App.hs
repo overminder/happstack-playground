@@ -31,6 +31,7 @@ import Web.Routes.Happstack
 import qualified Model as M
 import qualified Route as R
 import qualified Url as U
+import qualified Push as P
 import Conf
 
 parseStartupOption = do
@@ -69,6 +70,7 @@ parseStartupOption = do
 
 makeSiteConf option = do
   soyConf <- Soy.setup $ Soy.addFiles (opt_soys option)
+  pushChan <- P.mkMessageChan
   mongoPipe <- Mongo.runIOE $ do
     Mongo.connect (Mongo.host (opt_mongoHost option))
   let dbname = "NOL"
@@ -82,7 +84,7 @@ makeSiteConf option = do
         Right True -> return ()
         _ -> error (show eiResult)
     else return ()
-  return $ SiteConf soyConf option (M.DBInfo mongoPipe dbname)
+  return $ SiteConf soyConf option (M.DBInfo mongoPipe dbname pushChan)
 
 routes = do
   let thisDomain = ""

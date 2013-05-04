@@ -1,6 +1,12 @@
 {-# LANGUAGE ConstraintKinds, FlexibleContexts, OverloadedStrings #-}
 
-module Model where
+module Model (
+  module Todo,
+  module Model
+) where
+
+import Todo
+import qualified Push as P
 
 import Control.Applicative
 import Control.Monad.IO.Class
@@ -17,24 +23,6 @@ import qualified Data.AesonBson as J
 import Database.MongoDB ((=:), Field((:=)))
 import qualified Database.MongoDB as M
 
-type TodoId = String
-
-data Todo
-  = Todo {
-    todo_id :: Maybe TodoId,
-    todo_content :: String
-  }
-  deriving (Show)
-
-instance J.ToJSON Todo where
-  toJSON (Todo _id content) = J.object ["_id" .= _id, "content" .= content]
-
--- Don't use DeriveGeneric here since we are using different attributes.
-instance J.FromJSON Todo where
-  parseJSON (J.Object v) = Todo <$>
-                           v .: "_id" <*>
-                           v .: "content"
-  parseJSON _ = mzero
 
 --runMongo :: MonadIO m => M.Pipe -> T.Text -> m a -> m a
 runMongo :: MonadDB m => M.Action m a -> m a
@@ -51,15 +39,20 @@ type MonadDB m = (MonadBaseControl IO m, Applicative m, Monad m,
 data DBInfo
   = DBInfo {
     db_pipe :: M.Pipe,
-    db_name :: T.Text
+    db_name :: T.Text,
+    db_pushChan :: P.MessageChan
   }
 
 createTodo :: (MonadDB m) => Todo -> m Todo
-createTodo todo = runMongo $ do
-  table <- return "todo"
-  rawOid <- M.insert table todoDoc
-  let J.String oidText = J.aesonifyValue rawOid
-  return $ todo { todo_id = Just (T.unpack oidText) }
+createTodo todo = do
+  pushChan <- asks db_pushChan
+  runMongo $ do
+    table <- return "todo"
+    rawOid <- M.insert table todoDoc
+    let J.String oidText = J.aesonifyValue rawOid
+    let newTodo = todo { todo_id = Just (T.unpack oidText) }
+    liftIO $ P.publish pushChan $ P.Message P.TodoCreated newTodo
+    return newTodo
   where
     J.Object todoJSON = J.toJSON todo
     todoJSON' = removeIdField todoJSON
