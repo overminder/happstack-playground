@@ -5,9 +5,10 @@
 /**
  * @param numTodos
  * @param todos
+ * @param assetsTimestamp
  */
 {template .home}
-{call .htmlHeader /}
+{call .htmlHeader data="all"/}
   <body>
     <div id="todo-home">
       {call .createForm /}
@@ -20,9 +21,10 @@
 
 /**
  * @param todo
+ * @param assetsTimestamp
  */
 {template .update}
-{call .htmlHeader /}
+{call .htmlHeader data="all"/}
   <body>
     <div id="update-todo">
       <form action="/update/{$todo._id}" method="post">
@@ -37,7 +39,7 @@
 {/template}
 
 /**
- * Nothing much
+ * @param assetsTimestamp
  */
 {template .htmlHeader}
 <!doctype>
@@ -46,8 +48,8 @@
     <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
     <title>Show all todos</title>
     <link rel="stylesheet" type="text/css"
-     href="/assets/todo.css?201305041247" />
-    <script src="/assets/todo.js?201305041247" async
+     href="/assets/todo.css?{$assetsTimestamp}" />
+    <script src="/assets/todo.js?{$assetsTimestamp}" async
      onload="todo.entry.main()"></script>
   </head>
 {/template}

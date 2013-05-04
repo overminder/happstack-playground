@@ -124,10 +124,10 @@ type AppM a = ReaderT SiteConf (ServerPartT IO) a
 
 renderSoy :: [Soy.Identifier] -> [(Soy.Identifier, J.Value)] ->
              AppRouteM Response
-renderSoy templateName json = do
+renderSoy templateName args = do
   --liftIO $ print json
   soyConf <- asks sc_soyConf
-  eiOut <- runErrorT $ Soy.render templateName json soyConf
+  eiOut <- runErrorT $ Soy.render templateName (args ++ additionalArgs) soyConf
   case eiOut of
     Left e -> badRequest $
       toResponse (List.intercalate "." (map T.unpack templateName) ++
@@ -135,6 +135,9 @@ renderSoy templateName json = do
     Right out -> do --liftIO $ putStrLn (L.unpack out)
                     ok $ toResponseBS (C.pack "text/html")
                                       (T.encodeUtf8 (L.fromStrict out))
+  where
+    additionalArgs = [("assetsTimestamp", "201305041623")]
+
 
 createTodo :: Todo -> AppM Todo
 createTodo todo = do
