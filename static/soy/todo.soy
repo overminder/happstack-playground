@@ -6,9 +6,9 @@
  */
 {template .showOne}
   <div class="title">Todo</div>
-  <a class="edit" href="/update/{$_id}">edit</a>
+  <a class="edit" href="/update-todo/{$_id}">edit</a>
   <div class="content">{call .showContent data="all"/}</div>
-  <form class="submit-form" action="/delete/{$_id}" method="post">
+  <form class="submit-form" action="/delete-todo/{$_id}" method="post">
     <input class="todo-id" type="hidden" value="{$_id}">
     <input class="submit-btn" type="submit" value="delete">
   </form>

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+find -name "*.hs"
+find -name "*.js"
+find -name "*.soy"
+find -name "*.gss"

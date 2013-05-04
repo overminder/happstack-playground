@@ -27,7 +27,7 @@
 {call .htmlHeader data="all"/}
   <body>
     <div id="update-todo">
-      <form action="/update/{$todo._id}" method="post">
+      <form action="/update-todo/{$todo._id}" method="post">
         <textarea class="todo-content" name="content">
           {$todo.content}
         </textarea>
@@ -78,7 +78,7 @@
  */
 {template .createForm}
 <div class="create-todo">
-  <form class="submit-form" action="/create" method="post">
+  <form class="submit-form" action="/create-todo" method="post">
     <textarea class="todo-content" name="content"></textarea>
     <input class="submit-btn" type="submit" value="submit">
   </form>

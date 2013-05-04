@@ -1,10 +1,10 @@
-
 all : assets/todo.js assets/todo.css Main
 
-Main : Main.hs App.hs
-	ghc Main --make -static -optl-static -optl-pthread -O
-	strip Main
-
+Main : $(shell find app -name "*.hs")
+	ghc ./app/Main.hs -i./app --make -o $@ \
+		-DASSETS_DIR=$(shell pwd)/assets \
+		-static -optl-static -optl-pthread -O
+	#strip Main
 
 assets/todo.js : $(shell find static/js/ -name "*.js") static/soy/todo.soy.js
 	closurebuilder.py \

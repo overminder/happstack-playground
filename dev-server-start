@@ -1,12 +1,16 @@
 #!/bin/bash
 
+projRoot=$(pwd)
+
 if [ "$1" = '--interp' ]; then
+	cd app
 	runner="runhaskell Main.hs"
 else
 	runner="./Main"
 fi
 
 $runner \
-	--template-files=./static/soy/todo.soy \
-	--template-files=./static/soy/server.soy \
-	--assets-root=./assets
+	--template-files="$projRoot/static/soy/todo.soy" \
+	--template-files="$projRoot/static/soy/server.soy" \
+	--assets-root="$projRoot/assets"
+
