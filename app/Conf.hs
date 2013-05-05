@@ -8,10 +8,8 @@ data StartupOption
   = StartupOption {
     opt_host :: String,
     opt_port :: Int,
-    opt_soys :: [String],
     opt_mongoHost :: String,
-    opt_mongoNeedAuth :: Bool,
-    opt_assetsRoot :: String
+    opt_mongoNeedAuth :: Bool
   }
   deriving (Show)
 

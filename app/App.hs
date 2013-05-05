@@ -9,10 +9,13 @@ module App (
 ) where
 
 import Control.Monad
+import Control.Monad.Identity
+import Control.Monad.State
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import qualified Data.List as List
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as L
 import System.Environment
 import System.Console.GetOpt
@@ -47,29 +50,22 @@ parseStartupOption = do
                   "connect to mongoDB at HOST"
               , Option [] ["mongo-need-auth"] (NoArg setMongoNeedAuth)
                   "set mongoDB need auth"
-              , Option [] ["template-files"] (ReqArg addTemplateFiles "PATHS")
-                  "add soy template file from PATHS"
-              , Option [] ["assets-root"] (ReqArg setAssetsRoot "PATH")
-                  "serve asset files in PATH"
               ]
     setPort = \ p opts -> opts { opt_port = read p }
     setHost = \ h opts -> opts { opt_host = h }
-    addTemplateFiles = \ f opts -> opts { opt_soys = f : opt_soys opts }
     setMongoHost = \ h opts -> opts { opt_mongoHost = h }
     setMongoNeedAuth = \ opts -> opts { opt_mongoNeedAuth = True }
-    setAssetsRoot = \ r opts -> opts { opt_assetsRoot = r }
     defaultOption = StartupOption {
       opt_host = "127.0.0.1",
       opt_port = 9000,
-      opt_soys = [],
       opt_mongoHost = "127.0.0.1",
-      opt_mongoNeedAuth = False,
-      opt_assetsRoot = "./assets"
+      opt_mongoNeedAuth = False
     }
     usageHeader = "Usage: Main [OPTIONS...]"
 
-makeSiteConf option = do
-  soyConf <- Soy.setup $ Soy.addFiles (opt_soys option)
+makeSiteConf soyFiles option = do
+  soyConf <- Soy.setup $ do
+    modifySoyFiles (embedToSoy soyFiles ++)
   pushChan <- P.mkMessageChan
   mongoPipe <- Mongo.runIOE $ do
     Mongo.connect (Mongo.host (opt_mongoHost option))
@@ -85,10 +81,12 @@ makeSiteConf option = do
         _ -> error (show eiResult)
     else return ()
   return $ SiteConf soyConf option (M.DBInfo mongoPipe dbname pushChan)
+  where
+    embedToSoy soyFiles = runIdentity $ mapM Soy.parseSoyFile soyFiles
+    modifySoyFiles f = modify $ \ s -> s { Soy.cfg_files = f (Soy.cfg_files s) }
 
 routes = do
   let thisDomain = ""
-  assetsRoot <- asks (Conf.opt_assetsRoot . Conf.sc_opt)
   decodeBody myPolicy
   msum [ dir "_" $      implSite thisDomain "" apiSite
        ,                implSite thisDomain "" pageSite

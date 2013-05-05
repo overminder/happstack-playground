@@ -12,10 +12,12 @@ goog.require('goog.ui.ContainerRenderer');
 goog.require('goog.ui.Button');
 goog.require('goog.ui.Textarea');
 goog.require('goog.net.XhrIo');
+goog.require('goog.net.WebSocket');
 
 goog.require('todo.templates');
 goog.require('todo.url');
 goog.require('todo.model');
+goog.require('todo.ws');
 
 goog.scope(function() {
 
@@ -36,6 +38,7 @@ todo.ui.Home = function() {
 
   this.listView_ = new todo.ui.List();
   this.createForm_ = new todo.ui.CreateForm();
+  this.ws_ = new goog.net.WebSocket();
 
   this.addChild(this.listView_);
   this.addChild(this.createForm_);
@@ -52,12 +55,47 @@ todo.ui.Home.prototype.decorateInternal = function(el) {
   this.createForm_.decorate(createFormEl);
 };
 
+todo.ui.Home.prototype.enterDocument = function() {
+  goog.base(this, 'enterDocument');
+
+  goog.events.listen(this.ws_,
+    todo.ws.EventType.TODO_CREATED,
+    function(e) {
+      this.dispatchEvent({
+        type: todo.ui.Home.EventType.TODO_CREATED,
+        target: e.target
+      });
+    }, undefined, this);
+
+  goog.events.listen(this.ws_,
+    todo.ws.EventType.TODO_UPDATED,
+    function(e) {
+      this.dispatchEvent({
+        type: todo.ui.Home.EventType.TODO_UPDATED,
+        target: e.target
+      });
+    }, undefined, this);
+
+  goog.events.listen(this.ws_,
+    todo.ws.EventType.TODO_DELETED,
+    function(e) {
+      this.dispatchEvent({
+        type: todo.ui.Home.EventType.TODO_DELETED,
+        target: e.target
+      });
+    }, undefined, this);
+
+  todo.ws.setup(this.ws_);
+};
+
 /**
  * @constructor
  * @extends {Component}
  */
 todo.ui.List = function() {
   goog.base(this);
+
+  this.idToTodo_ = {};
 };
 goog.inherits(todo.ui.List, Component);
 
@@ -69,6 +107,7 @@ todo.ui.List.prototype.decorateInternal = function(el) {
     var todoView = new todo.ui.Todo();
     this.addChild(todoView);
     todoView.decorate(todoEl);
+    this.recordIdMapping(todoView);
   }, this);
 };
 
@@ -76,27 +115,50 @@ todo.ui.List.prototype.enterDocument = function() {
   goog.base(this, 'enterDocument');
 
   goog.events.listen(this.getParent(),
-    todo.ui.Home.EventType.TODO_ADDED,
-    function onAddTodo(e) {
+    todo.ui.Home.EventType.TODO_CREATED,
+    function(e) {
       var model = /** @type {todo.model.Todo} */ (e.target);
       var todoView = new todo.ui.Todo();
       todoView.setModel(model);
       this.addChildAt(todoView, 0, /* opt_render */ true);
+      this.recordIdMapping(todoView);
+    }, undefined, this);
+
+  goog.events.listen(this.getParent(),
+    todo.ui.Home.EventType.TODO_UPDATED,
+    function(e) {
+      var model = e.target;
+      var _id = model['_id'];
+      var todoView = this.idToTodo_[_id];
+      if (todoView) {
+        todoView.syncNewModel(model);
+      }
     }, undefined, this);
 
   goog.events.listen(this.getParent(),
     todo.ui.Home.EventType.TODO_DELETED,
     function(e) {
-      this.removeChild(/** @type {todo.ui.Todo} */ (e.target), true);
+      var _id = e.target['_id'];
+      var todoView = this.idToTodo_[_id];
+      if (todoView) {
+        delete this.idToTodo_[_id];
+        this.removeChild(todoView, true);
+      }
     }, undefined, this);
 };
 
+todo.ui.List.prototype.recordIdMapping = function(todoView) {
+  this.idToTodo_[todoView.getModel()['_id']] = todoView;
+};
+
 todo.ui.Home.EventType = {
-  TODO_ADDED: goog.events.getUniqueId('todo-added'),
+  TODO_CREATED: goog.events.getUniqueId('todo-created'),
+  TODO_UPDATED: goog.events.getUniqueId('todo-updated'),
   TODO_DELETED: goog.events.getUniqueId('todo-deleted'),
-  LOCAL_START_EDIT: goog.events.getUniqueId('local-start-edit'),
-  LOCAL_SUBMIT_OK: goog.events.getUniqueId('local-submit-ok'),
-  LOCAL_CANCEL_EDIT: goog.events.getUniqueId('local-cancel-edit')
+
+  LOCAL_START_EDIT:     goog.events.getUniqueId('local-start-edit'),
+  LOCAL_SUBMIT_EDIT_OK: goog.events.getUniqueId('local-submit-ok'),
+  LOCAL_CANCEL_EDIT:    goog.events.getUniqueId('local-cancel-edit')
 };
 
 /**
@@ -180,17 +242,9 @@ todo.ui.Todo.prototype.enterDocument = function() {
     goog.events.EventType.SUBMIT,
     function(e) {
       e.preventDefault();
-      XhrIo.send(todo.url.todoResource(_id), goog.bind(function() {
-        // Deletion ok: remove this component
-        this.dispatchEvent({
-          type: todo.ui.Home.EventType.TODO_DELETED,
-          target: this
-        });
-      }, this),
-      /* method */ 'DELETE',
-      /* data */ undefined, {
-        'content-type': 'application/json'
-      });
+      // Actual deletion is handled by the websocket
+      XhrIo.send(todo.url.todoResource(_id), undefined,
+        /* method */ 'DELETE');
       this.setEnabled(false);
     }, undefined, this);
 
@@ -212,19 +266,10 @@ todo.ui.Todo.prototype.enterDocument = function() {
     Component.EventType.ACTION,
     function() {
       var _id = this.getModel()['_id'];
-      XhrIo.send(todo.url.todoResource(_id), goog.bind(function(e) {
-        var xhr = /** @type {XhrIo} */ (e.target);
-        this.dispatchEvent(todo.ui.Home.EventType.LOCAL_SUBMIT_OK);
-        var responseJson = xhr.getResponseJson(todo.conf.JSON_XSS_PREFIX);
+      XhrIo.send(todo.url.todoResource(_id), goog.bind(function() {
+        // Actual update handled in websocket
         this.setIsEditing(false);
-
-        // Update self. XXX: make view observe model so the view can update
-        // itself just like in backbone.. no.
-        this.setModel(responseJson);
-        this.content_.getElement().innerHTML =
-          todo.templates.showContent({
-            content: this.getModel()['content']
-          });
+        this.dispatchEvent(todo.ui.Home.EventType.LOCAL_SUBMIT_EDIT_OK);
       }, this),
       /* method */ 'PUT',
       /* data */ goog.json.serialize({
@@ -251,11 +296,19 @@ todo.ui.Todo.prototype.enterDocument = function() {
     }, undefined, this);
 
   goog.events.listen(this.getParent(),
-    [ todo.ui.Home.EventType.LOCAL_SUBMIT_OK
+    [ todo.ui.Home.EventType.LOCAL_SUBMIT_EDIT_OK
     , todo.ui.Home.EventType.LOCAL_CANCEL_EDIT
     ], function(e) {
       this.setEnabled(true);
     }, undefined, this);
+};
+
+todo.ui.Todo.prototype.syncNewModel = function(newModel) {
+  this.setModel(newModel);
+  this.content_.getElement().innerHTML =
+    todo.templates.showContent({
+      content: this.getModel()['content']
+    });
 };
 
 todo.ui.Todo.prototype.setIsEditing = function(editing) {
@@ -302,12 +355,7 @@ todo.ui.CreateForm.prototype.enterDocument = function() {
     function(e) {
       e.preventDefault();
       XhrIo.send(todo.url.todoResource(), goog.bind(function(e) {
-        var xhr = /** @type {XhrIo} */ (e.target);
-        var responseJson = xhr.getResponseJson(todo.conf.JSON_XSS_PREFIX);
-        this.dispatchEvent({
-          type: todo.ui.Home.EventType.TODO_ADDED,
-          target: responseJson
-        });
+        // Dom insertion is handled by the websocket part.
         this.contentInput_.setValue('');
         this.setEnabled(true);
       }, this),

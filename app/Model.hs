@@ -51,7 +51,7 @@ createTodo todo = do
     rawOid <- M.insert table todoDoc
     let J.String oidText = J.aesonifyValue rawOid
     let newTodo = todo { todo_id = Just (T.unpack oidText) }
-    liftIO $ P.publish pushChan $ P.Message P.TodoCreated newTodo
+    liftIO $ P.publish pushChan $ P.TodoCreated newTodo
     return newTodo
   where
     J.Object todoJSON = J.toJSON todo
@@ -79,23 +79,29 @@ fetchTodoCount = runMongo $ do
   M.count (M.select [] table)
 
 updateTodo :: (MonadDB m) => Todo -> m ()
-updateTodo todo = runMongo $ do
-  table <- return "todo"
-  M.replace (M.select [idAttr := mkObjId idField] table)
-                (J.toBson json')
-  return ()
+updateTodo todo = do
+  pushChan <- asks db_pushChan
+  runMongo $ do
+    table <- return "todo"
+    M.replace (M.select [idAttr := mkObjId idField] table)
+              (J.toBson json')
+    liftIO $ P.publish pushChan $ P.TodoUpdated todo
+    return ()
   where
     J.Object json = J.toJSON $ todo
     json' = removeIdField json
     idField = fromJust $ todo_id todo
 
 deleteTodo :: (MonadDB m) => String -> m ()
-deleteTodo _id = runMongo $ do
-  table <- return "todo"
-  M.deleteOne $ (M.select [idAttr := mkObjId _id] table)
+deleteTodo _id = do
+  pushChan <- asks db_pushChan
+  runMongo $ do
+    table <- return "todo"
+    M.deleteOne $ (M.select [idAttr := mkObjId _id] table)
+    liftIO $ P.publish pushChan $ P.TodoDeleted _id
 
 -- Some helper functions for mongo/aeson
-removeIdField = HM.delete "_id"
+removeIdField = HM.delete idAttr
 
 docToHsVal = fromSucc . J.fromJSON . J.Object . J.toAeson
   where

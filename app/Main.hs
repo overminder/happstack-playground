@@ -5,6 +5,7 @@
 import Control.Monad.Reader
 import Control.Concurrent
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import System.IO
 
 import qualified Happstack.Server as H
@@ -25,7 +26,7 @@ import qualified Model as M
 
 main = do
   option <- parseStartupOption
-  siteConf <- makeSiteConf option
+  siteConf <- makeSiteConf embedSoyFiles option
   let warpSetting = W.defaultSettings {
         W.settingsPort = portNum,
         W.settingsHost = W.Host hostIp,
@@ -57,6 +58,13 @@ runHapp sp req = runWebT $ H.runServerPartT sp req
 #define TO_S(x) TO_S_(x)
 #define TO_S_(x) #x
 
+embedSoyFiles = map (T.decodeUtf8 . snd) . filter isSoy $
+  $(embedDir TO_S(SOYS_DIR))
+  where
+    isSoy (path, _)
+      | ".soy" `T.isSuffixOf` (T.pack path) = True
+      | otherwise = False
+
 -- Serves static files by compiling them into the binary :P
 staticApp = S.staticApp setting
   where
@@ -85,8 +93,6 @@ wsApp :: P.MessageChan -> WS.Request -> WS.WebSockets WS.Hybi10 ()
 wsApp chan request = case WS.requestPath request of
   "/" -> do
     WS.acceptRequest request
-    WS.getVersion >>= liftIO . putStrLn . ("client version: " ++)
-    sink <- WS.getSink
     P.subscribe chan
   _ -> do
     WS.rejectRequest request ""

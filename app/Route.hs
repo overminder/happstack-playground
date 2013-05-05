@@ -154,6 +154,7 @@ apiDeleteTodo _id = do
 getJsonReq :: (J.FromJSON a, MonadIO m, ServerMonad m) => m (Maybe a)
 getJsonReq = do
   rawBody <- getBody
+  --liftIO $ print rawBody
   return (J.decode rawBody)
 
 -- Some RESTful request don't provide a _id field (E.g. PUT).
